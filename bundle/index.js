@@ -110,6 +110,8 @@ export const inject = ['webServer'];
  */
 const DIAG_DIR = join(tmpdir(), PKG_NAME.replace(/^@/, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase());
 const DIAG_FILE = join(DIAG_DIR, 'report.json');
+/** The Host half's own activation dump, separate from the browser's event log. */
+const ACTIVATION_FILE = join(DIAG_DIR, 'activation.json');
 
 /** Cap the diagnostic log so a long session cannot grow the file without bound. */
 const DIAG_LIMIT = 200;
@@ -193,6 +195,10 @@ async function receiveReport(request, response) {
  */
 async function dumpDiagnostics(ctx) {
 	try {
+		// The client-module graph is composed after plugins mount, so an immediate
+		// read sees nothing. One short delay makes the dump answer the question it
+		// exists for: is this package's browser row in the graph?
+		await new Promise((resolve) => setTimeout(resolve, 2500).unref?.());
 		const clientModules = ctx.get('clientModules');
 		const graph = clientModules?.graph?.();
 		const table = clientModules?.table;
@@ -218,7 +224,8 @@ async function dumpDiagnostics(ctx) {
 				}
 			})(),
 		};
-		await writeFile(join(tmpdir(), 'dsh-mermaid-diag.json'), `${JSON.stringify(payload, null, 2)}\n`);
+		await mkdir(DIAG_DIR, { recursive: true });
+		await writeFile(ACTIVATION_FILE, `${JSON.stringify(payload, null, 2)}\n`);
 	} catch (error) {
 		ctx.logger?.warn?.(`dsh-mermaid: diagnostics failed: ${String(error)}`);
 	}
