@@ -1,6 +1,17 @@
 window.__ModuleLoader__.load({
 	id: 'dsh-mermaid-plus',
 	factory(require) {
+		/** Package name; also the boot-graph entry id and the source of every runtime name. */
+		const PKG = 'dsh-mermaid-plus';
+		/**
+		 * Host route serving the vendored runtime, derived from the package name so two
+		 * diagram plugins can be installed side by side. The Host half derives the same
+		 * value from its own manifest; the two formulas must stay identical.
+		 */
+		const RUNTIME_PATH = `/x-${PKG.replace(/^@/, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+		/** Bundled Mermaid release; part of the URL so a page reload refetches a new build. */
+		const RUNTIME_VERSION = '11.17.0';
+
 		/** Report one browser-half event to the Host's sink; a failure here is never fatal. */
 		function report(event, detail) {
 			try {
@@ -8,7 +19,8 @@ window.__ModuleLoader__.load({
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ event, detail, href: String(window.location.href), at: Date.now() }),
-					keepalive: true,
+					// No `keepalive`: on the desktop app's custom scheme the browser
+					// drops keepalive requests, and this report is best-effort anyway.
 				}).catch(() => undefined);
 			} catch {
 				/* the report is best effort only */
@@ -27,16 +39,6 @@ window.__ModuleLoader__.load({
 		const h = React.createElement;
 
 		//#region configuration
-		/** Package name; also the boot-graph entry id and the source of every runtime name. */
-		const PKG = 'dsh-mermaid-plus';
-		/**
-		 * Host route serving the vendored runtime, derived from the package name so two
-		 * diagram plugins can be installed side by side. The Host half derives the same
-		 * value from its own manifest; the two formulas must stay identical.
-		 */
-		const RUNTIME_PATH = `/x-${PKG.replace(/^@/, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
-		/** Bundled Mermaid release; part of the URL so a page reload refetches a new build. */
-		const RUNTIME_VERSION = '11.17.0';
 		/**
 		 * Preference key for the render mode. Namespaced by package name so a second
 		 * diagram plugin cannot read or overwrite this one's choice.

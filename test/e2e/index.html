@@ -45,6 +45,7 @@ const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   const url = typeof input === 'string' ? input : input.url;
   if (/^[:\/]*\/?x-dsh-mermaid-plus\/__report$/.test(url.replace(/^https?:\/\/[^/]+/, ''))) {
+    (window.__dshMermaidReports ??= []).push(url);
     return Promise.resolve({
       ok: true,
       status: 204,
@@ -220,6 +221,10 @@ settled = await waitFor(() => stream.closest('.dsh-mdm')?.querySelector('.dsh-md
 const streamSvg = stream.closest('.dsh-mdm')?.querySelector('.dsh-mdm-svg svg');
 const streamNodes = streamSvg?.querySelectorAll('*').length ?? 0;
 record('streamed block renders once settled', settled, `${streamNodes} svg node(s) for the final source`);
+
+// 8b. The browser half must actually attempt its lifecycle report.
+record('browser half reports lifecycle events', (window.__dshMermaidReports ?? []).length > 0,
+  `${(window.__dshMermaidReports ?? []).length} report(s), first=${window.__dshMermaidReports?.[0] ?? '-'}`);
 
 // 9. The viewer: a rendered diagram opens enlarged, zooms, and closes.
 const expandButton = [...firstCard.querySelectorAll('.dsh-mdm-btn')].find((node) => node.textContent === 'Expand');

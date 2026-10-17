@@ -48,6 +48,21 @@ const missing = await fetch(`${origin}${RUNTIME_PATH}/../package.json`);
 assert.equal(missing.status, 404, 'traversal must not escape the vendor directory');
 console.log('ok   traversal        404');
 
+// The browser half reports lifecycle events here; the sink must persist them.
+const report = await fetch(`${origin}${RUNTIME_PATH}/__report`, {
+	method: 'POST',
+	headers: { 'content-type': 'application/json' },
+	body: JSON.stringify({ event: 'selftest', detail: { ok: true } }),
+});
+assert.equal(report.status, 204, 'the report sink must accept a POST');
+const { tmpdir } = await import('node:os');
+const { readFile } = await import('node:fs/promises');
+const { join } = await import('node:path');
+const reportFile = join(tmpdir(), 'dsh-mermaid-plus', 'report.json');
+const entries = JSON.parse(await readFile(reportFile, 'utf8'));
+assert.ok(Array.isArray(entries) && entries.some((entry) => entry.event === 'selftest'), 'the sink must persist the event');
+console.log('ok   report sink       204 and the event is persisted');
+
 const unrelated = await fetch(`${origin}/plugins/other/client.js`);
 assert.equal(unrelated.status, 404, 'the route must not shadow other prefixes');
 console.log('ok   scope            404 outside the prefix');
