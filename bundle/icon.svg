@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Mermaid diagrams">
+  <rect x="1.5" y="3.5" width="9" height="6" rx="1.6" fill="#7aa2f7" />
+  <rect x="13.5" y="14.5" width="9" height="6" rx="1.6" fill="#73daca" />
+  <path d="M10.5 6.5h3.2a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2h-4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+  <circle cx="4.2" cy="17.5" r="1.7" fill="#e0af68" />
+  <path d="M9 17.5h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+</svg>

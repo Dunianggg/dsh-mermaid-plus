@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>dsh-mermaid e2e</title>
+<!--
+  End-to-end check of the SHIPPED client bundle in a real browser: real React,
+  the real vendored Mermaid release, the module-loader contract, and a DOM that
+  looks like the Chat renderer's Markdown output. Nothing here ships with the
+  plugin; it exists to prove the bundle works before it is trusted in the GUI.
+-->
+<script type="importmap">
+{ "imports": { "react": "https://esm.sh/react@18.3.1" } }
+</script>
+<style>
+  body { font: 14px -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; background: #fff; color: #1b1c1f; }
+  #transcript { max-width: 720px; margin: 0 auto; }
+  pre { background: #f4f6fb; border-radius: 8px; padding: 10px; overflow: auto; }
+  .shipped-code-card { font: 12px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div id="transcript">
+  <p>Assistant message with a diagram:</p>
+  <pre class="shipped-code-card"><code class="language-mermaid">flowchart LR
+  A[User] --> B{Plugin?}
+  B -->|yes| C[Render]
+  B -->|no| D[Code block]
+  C --> E([SVG])</code></pre>
+  <p>And a sequence diagram:</p>
+  <pre class="shipped-code-card"><code class="language-mermaid">sequenceDiagram
+  participant U as User
+  participant H as Host
+  H->>U: route /x-dsh-mermaid-plus
+  U->>H: GET mermaid.esm.min.mjs
+  H-->>U: bundled runtime</code></pre>
+  <p>Ordinary code must stay untouched:</p>
+  <pre class="shipped-code-card"><code class="language-js">const a = 1;</code></pre>
+</div>
+
+<script type="module">
+// The shipped bundle reports to its Host route; this static page has no Host.
+// Answer those posts locally so the test measures rendering, not transport.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (/^[:\/]*\/?x-dsh-mermaid-plus\/__report$/.test(url.replace(/^https?:\/\/[^/]+/, ''))) {
+    return Promise.resolve({
+      ok: true,
+      status: 204,
+      json: () => Promise.resolve(null),
+      text: () => Promise.resolve(''),
+    });
+  }
+  return nativeFetch(input, init);
+};
+
+const results = [];
+const record = (name, ok, detail = '') => {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`);
+};
+
+// 1. The module-loader contract: each shipped bundle registers one factory.
+const factories = new Map();
+const pending = [];
+window.__ModuleLoader__ = {
+  load(registration) {
+    factories.set(registration.id, registration.factory);
+    pending.push(registration.id);
+  },
+};
+
+const [{ default: React }, { createRoot }] = await Promise.all([
+  import('react'),
+  import('https://esm.sh/react-dom@18.3.1/client'),
+]);
+record('module table', typeof React.createElement === 'function' && typeof createRoot === 'function');
+
+// The shipped default is on-demand; these cases exercise automatic rendering,
+// so the page opts into the eager mode before the bundle reads its preference.
+const requestedMode = new URLSearchParams(location.search).get('mode');
+localStorage.setItem('dsh-mermaid.mode', requestedMode ?? 'always');
+await import('./client.js');
+record('client bundle registers', factories.has('dsh-mermaid-plus'), [...factories.keys()].join(','));
+
+// 2. The vendored runtime, fetched from the same route the app uses.
+// The real page reaches this URL through the bundle's own loader; this proves
+// the served file is a working Mermaid, not just reachable bytes.
+const runtimeUrl = new URL('/x-dsh-mermaid-plus/mermaid.esm.min.mjs', location.href);
+const realRuntime = await import(runtimeUrl.href);
+record('vendored runtime reachable via the Host route', typeof realRuntime.default?.render === 'function',
+  typeof realRuntime.default?.render === 'function' ? 'mermaid API available' : 'missing render()');
+
+// 3. Materialize the browser half and mount it the way the slot system would.
+const registrations = [];
+const react = {
+  ...React,
+  createElement: React.createElement,
+};
+const requireMock = (spec) => {
+  if (spec === 'react') return react;
+  throw new Error(`unexpected require(${spec})`);
+};
+
+
+const clientModule = factories.get('dsh-mermaid-plus')(requireMock);
+const injectables = {
+  locale: {
+    register: () => () => undefined,
+    bind: () => (key) => key,
+  },
+};
+const ctx = {
+  get: (name) => injectables[name],
+  effect: (callback) => {
+    callback();
+    return () => undefined;
+  },
+  on: () => () => undefined,
+  locale: injectables.locale,
+  slots: {
+    inject: (_key, callback) => callback(),
+    register: (options, component) => {
+      registrations.push({ ...options, component });
+      return () => undefined;
+    },
+  },
+};
+clientModule.apply(ctx);
+record('three views registered', registrations.length === 3, registrations.map((entry) => entry.name).join(', '));
+
+const host = registrations.find((entry) => entry.name === 'shell.overlay');
+if (new URLSearchParams(location.search).has('bare')) {
+  const mount = document.createElement('div');
+  document.body.append(mount);
+  createRoot(mount).render(React.createElement(host.component));
+  window.__E2E__ = [{ name: 'bare mount', ok: true }];
+  document.title = 'E2E bare';
+  throw new Error('bare mode: rendering stopped after mount');
+}
+const mount = document.createElement('div');
+document.body.append(mount);
+const root = createRoot(mount);
+root.render(React.createElement(host.component));
+
+// 4. Wait for the decoration to adopt both blocks and render real SVG.
+const waitFor = async (check, timeout = 25000) => {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (check()) return true;
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+};
+
+const cards = () => [...document.querySelectorAll('.dsh-mdm')];
+const svgs = () => [...document.querySelectorAll('.dsh-mdm-svg svg')];
+
+const adopted = await waitFor(() => cards().length === 2);
+record('two mermaid blocks adopted', adopted, `${cards().length} card(s)`);
+
+const rendered = await waitFor(() => svgs().length === 2);
+record('diagrams rendered to SVG', rendered, `${svgs().length} svg(s)`);
+
+const errorText = document.querySelector('.dsh-mdm-err')?.textContent ?? '';
+record('no render error', errorText === '', errorText);
+
+const svgHasContent = svgs().every((svg) => svg.childElementCount > 0);
+record('svg elements carry geometry', svgHasContent, svgs().map((svg) => svg.childElementCount).join(','));
+
+// The diagrams must fill the card width and stay inside the column.
+const metrics = svgs().map((svg) => {
+  const rect = svg.getBoundingClientRect();
+  const card = svg.closest('.dsh-mdm').getBoundingClientRect();
+  return { w: Math.round(rect.width), h: Math.round(rect.height), overflow: Math.round(rect.right - card.right) };
+});
+record('diagrams fit their card', metrics.every((m) => m.w > 50 && m.h > 20 && m.overflow <= 1), JSON.stringify(metrics));
+
+// 5a. Ordering: a card must stand where its code block stood, not after it.
+const order = [...document.getElementById('transcript').children].map((node) =>
+  node.classList?.contains('dsh-mdm') ? 'card' : node.tagName === 'PRE' ? 'pre' : node.tagName.toLowerCase(),
+);
+const cardOrder = order.filter((kind) => kind === 'card' || kind === 'pre');
+record('cards stand in place of their code block', cardOrder.join(',') === 'card,card,pre', order.join(','));
+
+// 5. The ordinary code block must be untouched.
+const plain = [...document.querySelectorAll('pre')].filter((pre) => pre.querySelector('code.language-js'));
+record('plain code untouched', plain.length === 1 && plain[0].closest('.dsh-mdm') === null);
+
+// 6. Theme readback: the tokens the bundle passes to Mermaid must be real colors.
+const paletteProbe = getComputedStyle(document.documentElement).colorScheme || 'n/a';
+record('palette source readable', paletteProbe !== '', `color-scheme=${paletteProbe}`);
+
+// 7. The Diagram/Code toggle switches views.
+const firstCard = cards()[0];
+const firstPre = firstCard.querySelector('.dsh-mdm-source pre');
+const button = firstCard.querySelector('.dsh-mdm-btn');
+const hiddenBefore = firstPre.hidden;
+button.click();
+await new Promise((resolve) => setTimeout(resolve, 60));
+const codeViewDisplay = getComputedStyle(firstCard.querySelector('.dsh-mdm-diagram')).display;
+record('toggle shows source', firstPre.hidden === false && firstCard.querySelector('.dsh-mdm-diagram').hidden === true,
+  `hidden before=${hiddenBefore}, after=${firstPre.hidden}, diagram display=${codeViewDisplay}`);
+record('code view really hides the diagram', codeViewDisplay === 'none', `display=${codeViewDisplay}`);
+button.click();
+await new Promise((resolve) => setTimeout(resolve, 60));
+record('toggle restores diagram', firstPre.hidden === true);
+
+// 8. Streaming: a block whose source keeps growing settles on the final content.
+const stream = document.createElement('pre');
+stream.innerHTML = '<code class="language-mermaid">flowchart LR\n  S[stream]</code>';
+document.getElementById('transcript').append(stream);
+let settled = false;
+for (const chunk of [' --> A', ' --> B', ' --> C']) {
+  await new Promise((resolve) => setTimeout(resolve, 220));
+  stream.querySelector('code').textContent += chunk;
+}
+settled = await waitFor(() => stream.closest('.dsh-mdm')?.querySelector('.dsh-mdm-svg svg') !== null, 20000);
+const streamSvg = stream.closest('.dsh-mdm')?.querySelector('.dsh-mdm-svg svg');
+const streamNodes = streamSvg?.querySelectorAll('*').length ?? 0;
+record('streamed block renders once settled', settled, `${streamNodes} svg node(s) for the final source`);
+
+// 9. The viewer: a rendered diagram opens enlarged, zooms, and closes.
+const expandButton = [...firstCard.querySelectorAll('.dsh-mdm-btn')].find((node) => node.textContent === 'Expand');
+record('expand control present', expandButton !== undefined && !expandButton.hidden);
+expandButton.click();
+const viewer = await waitFor(() => document.querySelector('.dsh-mdm-lb') !== null, 3000);
+record('viewer opens', viewer);
+const viewerSvg = document.querySelector('.dsh-mdm-lb-canvas svg');
+const viewerBox = viewerSvg?.getBoundingClientRect();
+record('viewer shows the diagram', viewerSvg !== null && (viewerBox?.width ?? 0) > 200,
+  `svg width=${Math.round(viewerBox?.width ?? 0)}`);
+const backdrop = getComputedStyle(document.querySelector('.dsh-mdm-lb')).backgroundColor;
+record('viewer dims the page behind it', /rgba?\([^)]*,\s*0?\.[6-9]\d*\)/.test(backdrop), backdrop);
+const zoomLabel = document.querySelector('.dsh-mdm-lb-zoom');
+const zoomBefore = zoomLabel?.textContent;
+record('viewer starts at a fitted size', zoomBefore !== undefined && zoomBefore !== '100%', `initial ${zoomBefore}`);
+[...document.querySelectorAll('.dsh-mdm-lb-btn')]
+  .find((node) => node.getAttribute('aria-label') === 'Zoom in')
+  ?.click();
+await new Promise((resolve) => setTimeout(resolve, 80));
+record('viewer zooms in', zoomLabel?.textContent !== zoomBefore, `${zoomBefore} -> ${zoomLabel?.textContent}`);
+document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+await new Promise((resolve) => setTimeout(resolve, 80));
+record('Escape closes the viewer', document.querySelector('.dsh-mdm-lb') === null);
+record('viewer restores page scrolling', document.body.style.overflow === '');
+
+// 10. On-demand mode: nothing renders until the reader asks.
+const settingsMount = document.createElement('div');
+document.body.append(settingsMount);
+const settingsRoot = createRoot(settingsMount);
+const settingView = registrations.find((entry) => entry.name === 'settings.general.item');
+settingsRoot.render(React.createElement(settingView.component));
+await waitFor(() => settingsMount.querySelector('[role="radiogroup"]') !== null);
+const pillFor = (label) =>
+  [...settingsMount.querySelectorAll('[role="radiogroup"] [role="radio"]')].find(
+    (pill) => (pill.textContent ?? '').trim() === label,
+  );
+record('settings offers three modes', settingsMount.querySelectorAll('[role="radio"]').length === 3);
+const onDemand = pillFor('On demand');
+record('on-demand pill present', onDemand !== undefined);
+onDemand.click();
+await new Promise((resolve) => setTimeout(resolve, 120));
+
+const lazy = document.createElement('pre');
+lazy.innerHTML = '<code class="language-mermaid">flowchart LR\n  L[lazy] --> M[manual]</code>';
+document.getElementById('transcript').append(lazy);
+await waitFor(() => lazy.closest('.dsh-mdm') !== null, 5000);
+record('on-demand block adopted', lazy.closest('.dsh-mdm') !== null);
+await new Promise((resolve) => setTimeout(resolve, 500));
+record('on-demand block stays unrendered', lazy.closest('.dsh-mdm')?.getAttribute('data-dsh-mermaid-state') === 'idle',
+  `state=${lazy.closest('.dsh-mdm')?.getAttribute('data-dsh-mermaid-state')}`);
+record('on-demand keeps the source visible', lazy.hidden === false);
+
+lazy.closest('.dsh-mdm').querySelector('.dsh-mdm-btn').click();
+const lazySvg = await waitFor(() => lazy.closest('.dsh-mdm')?.querySelector('.dsh-mdm-svg svg') !== null, 20000);
+record('on-demand click renders', lazySvg, `state=${lazy.closest('.dsh-mdm')?.getAttribute('data-dsh-mermaid-state')}`);
+record('on-demand click hides the source', lazy.hidden === true);
+
+settingsRoot.unmount();
+settingsMount.remove();
+
+// 11. Unmount must clean everything up (the plugin's own disposal contract).
+// `?keep` leaves the page rendered so a screenshot can show the real diagrams.
+if (!new URLSearchParams(location.search).has('keep')) {
+root.unmount();
+await new Promise((resolve) => setTimeout(resolve, 150));
+record('unmount removes every card', document.querySelectorAll('.dsh-mdm').length === 0,
+  `${document.querySelectorAll('.dsh-mdm').length} left`);
+const restored = [...document.querySelectorAll('#transcript pre')].filter((pre) =>
+  /^(flowchart|sequenceDiagram)/.test(pre.textContent ?? ''),
+).length;
+record('unmount leaves every source block', restored === 4, `${restored} mermaid source block(s) restored`);
+
+}
+
+// `?viewer=1` leaves the viewer open for a screenshot.
+if (new URLSearchParams(location.search).has('viewer')) {
+  const first = document.querySelector('.dsh-mdm');
+  [...first.querySelectorAll('.dsh-mdm-btn')].find((node) => node.textContent === 'Expand')?.click();
+}
+document.title = `E2E ${results.filter((r) => r.ok).length}/${results.length}`;
+window.__E2E__ = results;
+</script>
+</body>
+</html>
