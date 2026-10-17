@@ -424,25 +424,34 @@ window.__ModuleLoader__.load({
 		const DIAGRAM_KEYWORD =
 			/^\s*(?:%%\{|flowchart|graph|sequenceDiagram|classDiagram(?:-v2)?|stateDiagram(?:-v2)?|erDiagram|gantt|pie|mindmap|journey|timeline|quadrantChart|xychart(?:-beta)?|gitGraph|requirementDiagram|C4\w*|block-beta|packet-beta|sankey-beta|kanban|architecture-beta|zenuml|radar-beta|treemap)\b/;
 
-		/** Whether one `<code>` element holds a Mermaid fence. */
-		function isMermaidBlock(code) {
-			if (code.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
-			const pre = code.parentElement;
-			if (pre === null || pre.tagName !== 'PRE') return false;
-			for (const value of [
-				code.getAttribute('data-lang'),
-				code.getAttribute('data-language'),
-				code.getAttribute('lang'),
-				pre.getAttribute('data-lang'),
-				pre.getAttribute('data-language'),
-			]) {
-				if (typeof value === 'string' && MERMAID_LANGS.has(value.trim().toLowerCase())) return true;
+		/**
+		 * Whether one `<pre>` holds a Mermaid fence.
+		 *
+		 * Keyed on the `<pre>`, not a `<code>` child: the chat renderer wraps the
+		 * source in `<pre><code>`, while other renderers (a document preview's plain
+		 * text view, for instance) put it straight into a `<pre>`. Both are the same
+		 * thing to a reader.
+		 * @param pre - candidate block element.
+		 * @returns whether its source looks like a rendered Mermaid diagram.
+		 */
+		function isMermaidBlock(pre) {
+			if (pre.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
+			if (pre.tagName !== 'PRE') return false;
+			const code = pre.querySelector('code');
+			for (const element of code === null ? [pre] : [code, pre]) {
+				for (const value of [
+					element.getAttribute('data-lang'),
+					element.getAttribute('data-language'),
+					element.getAttribute('lang'),
+				]) {
+					if (typeof value === 'string' && MERMAID_LANGS.has(value.trim().toLowerCase())) return true;
+				}
+				for (const name of element.classList) {
+					if (!name.startsWith('language-')) continue;
+					if (MERMAID_LANGS.has(name.slice('language-'.length).toLowerCase())) return true;
+				}
 			}
-			for (const name of code.classList) {
-				if (!name.startsWith('language-')) continue;
-				if (MERMAID_LANGS.has(name.slice('language-'.length).toLowerCase())) return true;
-			}
-			const source = code.textContent ?? '';
+			const source = (code ?? pre).textContent ?? '';
 			if (source.length > MAX_SOURCE_CHARS * 4) return false;
 			return DIAGRAM_KEYWORD.test(source);
 		}
@@ -501,18 +510,19 @@ window.__ModuleLoader__.load({
 		let paletteKey = '';
 		let sweepTimer = null;
 		let scanTimer = null;
+		let unmatchedReports = 0;
 		let uid = 0;
 
-		/** Live `<code>` elements that are not decorated yet. */
+		/** Live `<pre>` blocks that are not decorated yet. */
 		function candidates() {
 			const found = [];
-			for (const code of document.querySelectorAll('pre > code')) {
-				if (entries.has(code)) continue;
+			for (const pre of document.querySelectorAll('pre')) {
+				if (entries.has(pre)) continue;
 				// Never adopt a block that already lives inside a rendered card: a
 				// re-render can hand back the moved node, and a second diagram plugin
 				// (ours or another one) must not wrap an existing card again.
-				if (code.closest('[data-dsh-mermaid]') !== null) continue;
-				if (isMermaidBlock(code)) found.push(code);
+				if (pre.closest('[data-dsh-mermaid]') !== null) continue;
+				if (isMermaidBlock(pre)) found.push(pre);
 			}
 			return found;
 		}
@@ -681,12 +691,10 @@ window.__ModuleLoader__.load({
 		}
 
 		/** Attach one decoration, moving the code block inside our card. */
-		function adopt(code) {
-			const pre = code.parentElement;
-			const parent = pre?.parentElement;
+		function adopt(pre) {
+			const parent = pre.parentElement;
 			if (parent == null) return;
 			const entry = {
-				code,
 				pre,
 				state: 'idle',
 				view: 'diagram',
@@ -701,7 +709,7 @@ window.__ModuleLoader__.load({
 			entry.root = buildCard(entry);
 			parent.insertBefore(entry.root, pre);
 			entry.source.append(pre);
-			entries.set(code, entry);
+			entries.set(pre, entry);
 			paint(entry);
 			if (typeof ResizeObserver === 'function') {
 				entry.resize = new ResizeObserver(() => applyZoom(entry));
@@ -725,7 +733,7 @@ window.__ModuleLoader__.load({
 		/** Render (or re-render) one decoration when its source or the palette changed. */
 		function render(entry) {
 			if (!entry.pre.isConnected) return;
-			const source = entry.code.textContent ?? '';
+			const source = entry.pre.textContent ?? '';
 			if (source.trim() === '') {
 				entry.state = 'pending';
 				paint(entry);
@@ -1145,10 +1153,10 @@ window.__ModuleLoader__.load({
 
 		/** Sweep decorations whose code block the renderer unmounted. */
 		function sweep() {
-			for (const [code, entry] of [...entries]) {
-				if (code.isConnected && entry.pre.isConnected) continue;
+			for (const [pre, entry] of [...entries]) {
+				if (pre.isConnected) continue;
 				release(entry);
-				entries.delete(code);
+				entries.delete(pre);
 			}
 		}
 
@@ -1183,6 +1191,24 @@ window.__ModuleLoader__.load({
 				for (const code of fresh) adopt(code);
 				// The scan itself stays quiet; only adopted blocks and failures report.
 				if (fresh.length > 0) report('adopted', { count: fresh.length });
+				else if (entries.size === 0 && unmatchedReports < 3) {
+					// A block exists but nothing matched: record what the DOM actually
+					// holds, once or twice, so a renderer this detector misses can be
+					// diagnosed from a user's own session instead of a screenshot.
+					const blocks = document.querySelectorAll('pre');
+					if (blocks.length > 0) {
+						unmatchedReports += 1;
+						report('blocks-unmatched', {
+							count: blocks.length,
+							inPreview: document.querySelector('[data-document-markdown]') !== null,
+							sample: [...blocks].slice(0, 3).map((pre) => ({
+								cls: pre.className || '(none)',
+								code: pre.querySelector('code') !== null,
+								head: (pre.textContent ?? '').slice(0, 40),
+							})),
+						});
+					}
+				}
 				hub.emit({ rendered: countState('ok'), failed: countState('error') });
 			}, 80);
 		}

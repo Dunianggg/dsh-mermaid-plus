@@ -243,6 +243,13 @@ console.log('ok   mount              host view renders the package stylesheet');
 const flow = addBlock('mermaid', 'flowchart LR\n  A --> B');
 const plain = addBlock('js', 'const a = 1;');
 const bare = addBlock('', 'sequenceDiagram\n  Alice->>Bob: Hi', { labelled: false });
+const barePre = window.document.createElement('pre');
+barePre.textContent = 'flowchart LR\n  X --> Y';
+window.document.getElementById('transcript').append(barePre);
+const plainPre = window.document.createElement('pre');
+plainPre.textContent = 'const a = 1;\nconsole.log(a);';
+window.document.getElementById('transcript').append(plainPre);
+
 const inline = window.document.createElement('code');
 inline.className = 'language-mermaid';
 inline.textContent = 'flowchart LR';
@@ -260,6 +267,8 @@ assert.equal(flow.pre.hidden, false, 'the source must stay visible until render 
 assert.equal(plain.pre.closest('.dsh-mdm'), null, 'a non-mermaid block must stay untouched');
 assert.equal(inline.closest('.dsh-mdm'), null, 'inline code must stay untouched');
 assert.equal(bare.pre.closest('.dsh-mdm') !== null, true, 'an unlabelled block with a diagram keyword must be adopted');
+assert.equal(barePre.closest('.dsh-mdm') !== null, true, 'a <pre> without a <code> child must be adopted');
+assert.equal(plainPre.closest('.dsh-mdm'), null, 'an unrelated bare <pre> must stay untouched');
 assert.equal(importedModules.length, 0, 'the 3.5 MB runtime must not load before a diagram is requested');
 assert.equal(runtime.renderCount, 0, 'nothing may be rendered in the default mode');
 console.log('ok   on demand          cards adopted, nothing rendered, runtime not loaded');
@@ -418,7 +427,7 @@ assert.equal(window.document.querySelectorAll('.dsh-mdm').length, 0, 'unmounting
 const restored = [...window.document.querySelectorAll('#transcript pre')].filter((pre) =>
 	/flowchart|sequenceDiagram|pie/.test(pre.textContent ?? ''),
 );
-assert.equal(restored.length, 6, 'unmounting must hand every adopted code block back to the document');
+assert.equal(restored.length, 7, 'unmounting must hand every adopted code block back to the document');
 assert.equal(restored.every((pre) => pre.hidden === false), true, 'restored code blocks must be visible again');
 console.log('ok   teardown           unmount removes cards and restores every source block');
 
