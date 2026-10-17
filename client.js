@@ -512,6 +512,8 @@ window.__ModuleLoader__.load({
 		let scanTimer = null;
 		let unmatchedReports = 0;
 		let lastStraySignature = '';
+		let lastPreviewSignature = '';
+		let previewReports = 0;
 		let uid = 0;
 
 		/** Live `<pre>` blocks that are not decorated yet. */
@@ -1195,6 +1197,31 @@ window.__ModuleLoader__.load({
 				// A block that belongs to no card and was not recognised: record what the
 				// DOM actually holds, a few times, so a renderer this detector misses can
 				// be diagnosed from a real session instead of a screenshot.
+				// What the open document preview actually contains, sampled on change and
+				// kept separate from the transcript, so a preview-only renderer is visible.
+				const markdown = document.querySelector('[data-document-markdown]');
+				if (markdown !== null && previewReports < 6) {
+					const blocks = [...markdown.querySelectorAll('pre')];
+					const signature = blocks
+						.map((pre) => `${pre.className}|${(pre.textContent ?? '').slice(0, 40)}`)
+						.join('\u0001');
+					if (signature !== lastPreviewSignature) {
+						lastPreviewSignature = signature;
+						previewReports += 1;
+						report('preview-blocks', {
+							pres: blocks.length,
+							codes: markdown.querySelectorAll('code').length,
+							iframes: markdown.querySelectorAll('iframe').length,
+							svgs: markdown.querySelectorAll('svg').length,
+							sample: blocks.slice(0, 5).map((pre) => ({
+								cls: pre.className || '(none)',
+								code: pre.querySelector('code') !== null,
+								head: (pre.textContent ?? '').slice(0, 80),
+							})),
+						});
+					}
+				}
+
 				if (unmatchedReports < 10) {
 					const previewOpen = document.querySelector('[data-document-markdown]') !== null;
 					// Inside a document preview every stray block is interesting; elsewhere
