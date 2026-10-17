@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { serveVendorFile, RUNTIME_PATH } from '../bundle/index.js';
+import { serveVendorFile, RUNTIME_PATH } from '../index.js';
 
 /** Node response double: records the status line and every byte written. */
 function makeResponse() {

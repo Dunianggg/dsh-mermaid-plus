@@ -3,7 +3,7 @@
  *
  *   node test/run.mjs
  *
- * `node build.mjs` must have run first (it produces `bundle/vendor/`).
+ * `node build.mjs` must have run first (it produces `vendor/`).
  * The real-browser end-to-end page is `test/e2e/index.html`; serve the plugin
  * directory over HTTP and open `test/e2e/index.html?keep=1`, then read
  * `window.__E2E__` (or the document title) for the result table.

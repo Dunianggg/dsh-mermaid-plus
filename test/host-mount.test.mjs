@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { Context } from '@deepseek-ai/cordis';
 import WebServer from '@deepseek-ai/dsh-host-webserver';
-import { inject, apply, RUNTIME_PATH } from '../bundle/index.js';
+import { inject, apply, RUNTIME_PATH } from '../index.js';
 
 /** Build one context with the webserver mounted under the plugin's own inject list. */
 async function mount(port) {

@@ -1,6 +1,5 @@
 node_modules/
-bundle/node_modules/
-bundle/diagnostics.json
+diagnostics.json
 test/e2e/runtime/
 .DS_Store
 *.log

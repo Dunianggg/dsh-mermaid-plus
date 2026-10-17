@@ -1,8 +1,63 @@
 {
-  "name": "dsh-mermaid-plus-workspace",
-  "private": true,
+  "name": "dsh-mermaid-plus",
+  "version": "0.2.0",
+  "description": "Mermaid diagrams for DeepSeek Harness: on-demand rendering, theme-aware, with a fullscreen zoom viewer.",
+  "license": "MIT",
+  "author": "pidongqianqian",
   "type": "module",
-  "description": "Build and test workspace for the dsh-mermaid-plus DSH bundle (package lives in bundle/).",
+  "icon": "./icon.svg",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "mermaid",
+    "diagram",
+    "flowchart",
+    "markdown",
+    "sequence-diagram"
+  ],
+  "homepage": "https://github.com/pidongqianqian/dsh-mermaid-plus#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pidongqianqian/dsh-mermaid-plus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pidongqianqian/dsh-mermaid-plus/issues"
+  },
+  "meta": {
+    "title": "Mermaid Diagrams Plus",
+    "description": "Renders mermaid fenced code blocks as diagrams. Nothing renders until you ask (on demand by default), with scroll-into-view and always modes, theme-aware colours, and a fullscreen viewer with zoom and pan."
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "vendor/mermaid.esm.min.mjs",
+    "vendor/mermaid.LICENSE",
+    "locale/*.json",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
   "scripts": {
     "build": "node build.mjs",
     "test": "node test/run.mjs",

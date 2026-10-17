@@ -14,9 +14,9 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = fileURLToPath(new URL('./e2e/', import.meta.url));
 /** The real vendored runtime, served under the same route the Host uses. */
-const vendorDir = fileURLToPath(new URL('../bundle/vendor/', import.meta.url));
+const vendorDir = fileURLToPath(new URL('../vendor/', import.meta.url));
 /** The shipped browser bundle, served at the path the page imports. */
-const clientFile = fileURLToPath(new URL('../bundle/client.js', import.meta.url));
+const clientFile = fileURLToPath(new URL('../client.js', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.map': 'application/json; charset=utf-8', '.svg': 'image/svg+xml' };
 const server = createServer(async (req, res) => {
 	const path = new URL(req.url ?? '/', 'http://x').pathname;

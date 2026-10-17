@@ -4,10 +4,8 @@
  * Run from the workspace root of this plugin (where `node_modules/mermaid`
  * lives): `node build.mjs`.
  *
- * Produces, inside `bundle/`:
- *
- * `vendor/mermaid.esm.min.mjs` — Mermaid bundled into ONE file, including every
- * diagram parser, so the browser half can `import()` it from the Host route.
+ * Produces `vendor/mermaid.esm.min.mjs` — Mermaid bundled into ONE file, including
+ * every diagram parser, so the browser half can `import()` it from the Host route.
  *
  * The browser half loads this through the Host's own route rather than the
  * client module loader's package-local chunk mechanism: that mechanism addresses
@@ -20,12 +18,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const pkgDir = join(root, 'bundle');
-const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const mermaidDir = join(root, 'node_modules', 'mermaid');
 const version = JSON.parse(readFileSync(join(mermaidDir, 'package.json'), 'utf8')).version;
 const esbuild = join(root, 'node_modules', '.bin', 'esbuild');
-const vendor = join(pkgDir, 'vendor');
+const vendor = join(root, 'vendor');
 
 // 1. One self-contained ESM bundle: static and dynamic imports both inlined, so
 //    the browser needs exactly one request and the runtime needs no import map.
@@ -52,4 +49,4 @@ if (/^\s*(?:import|export)\s/m.test(body)) {
 // 3. License notice travels with the vendored bytes.
 copyFileSync(join(mermaidDir, 'LICENSE'), join(vendor, 'mermaid.LICENSE'));
 
-console.log(`build: bundled Mermaid ${version} — runtime ${body.length} B -> bundle/vendor/`);
+console.log(`build: bundled Mermaid ${version} — runtime ${body.length} B -> vendor/`);

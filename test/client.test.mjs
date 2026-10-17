@@ -113,7 +113,7 @@ globalThis.__dshMermaidImport = async (specifier) => {
 };
 
 // Evaluate the shipped bundle exactly as the browser would.
-new Function('window', readFileSync(join(root, 'bundle', 'client.js'), 'utf8'))(window);
+new Function('window', readFileSync(join(root, 'client.js'), 'utf8'))(window);
 
 assert.equal(registrations.length, 1, 'the bundle must register exactly one factory');
 assert.equal(registrations[0].id, PKG, 'the factory id must be the package name');
