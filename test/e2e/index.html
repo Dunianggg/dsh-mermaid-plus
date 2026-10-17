@@ -236,6 +236,20 @@ const viewerSvg = document.querySelector('.dsh-mdm-lb-canvas svg');
 const viewerBox = viewerSvg?.getBoundingClientRect();
 record('viewer shows the diagram', viewerSvg !== null && (viewerBox?.width ?? 0) > 200,
   `svg width=${Math.round(viewerBox?.width ?? 0)}`);
+const surfaceStyle = getComputedStyle(document.querySelector('.dsh-mdm-lb-canvas'));
+const surfaceAlpha = (() => {
+  const m = /rgba?\(([^)]+)\)/.exec(surfaceStyle.backgroundColor) || [];
+  const parts = (m[1] ?? '').split(',').map((value) => Number.parseFloat(value));
+  return parts.length === 4 ? parts[3] : parts.length === 3 ? 1 : 0;
+})();
+const surfaceLuma = (() => {
+  const m = /rgba?\(([^)]+)\)/.exec(surfaceStyle.backgroundColor) || [];
+  const [r = 0, g = 0, b = 0] = (m[1] ?? '').split(',').map((value) => Number.parseFloat(value));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+})();
+record('viewer paints an opaque diagram surface', surfaceAlpha === 1 && surfaceLuma > 180,
+  `${surfaceStyle.backgroundColor} alpha=${surfaceAlpha} luma=${Math.round(surfaceLuma)}`);
+
 const backdrop = getComputedStyle(document.querySelector('.dsh-mdm-lb')).backgroundColor;
 record('viewer dims the page behind it', /rgba?\([^)]*,\s*0?\.[6-9]\d*\)/.test(backdrop), backdrop);
 const zoomLabel = document.querySelector('.dsh-mdm-lb-zoom');

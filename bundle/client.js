@@ -470,7 +470,7 @@ window.__ModuleLoader__.load({
 .dsh-mdm-lb-btn:focus-visible{outline:2px solid #8ab4f8;outline-offset:2px}
 .dsh-mdm-lb-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;cursor:grab}
 .dsh-mdm-lb-stage[data-dragging="true"]{cursor:grabbing}
-.dsh-mdm-lb-canvas{transform-origin:center center;will-change:transform;flex:none}
+.dsh-mdm-lb-canvas{transform-origin:center center;will-change:transform;flex:none;padding:24px;border-radius:14px;box-sizing:content-box;box-shadow:0 18px 60px rgba(0,0,0,.5)}
 .dsh-mdm-lb-canvas svg{display:block;width:100%;height:100%;max-width:none}
 .dsh-mdm-lb-hint{padding:0 14px 12px;font-size:11px;line-height:1.4;color:rgba(242,245,250,.6);text-align:center;flex:none}
 @media (prefers-reduced-motion: no-preference){.dsh-mdm-lb{animation:dsh-mdm-in .15s ease-out}}
@@ -740,6 +740,8 @@ window.__ModuleLoader__.load({
 			const scheme = currentScheme();
 			const palette = readPalette(scheme);
 			paletteSignature = palette.signature;
+			entry.surface = palette.palette.background;
+			entry.surfaceDark = palette.dark;
 			const key = `${paletteSignature}\u0000${source}`;
 			if (key === entry.hash && entry.state === 'ok') return;
 			entry.hash = key;
@@ -789,6 +791,8 @@ window.__ModuleLoader__.load({
 						throw new Error('mermaid produced an empty diagram');
 					}
 					remember(key, result.svg);
+					entry.surface = palette.palette.background;
+					entry.surfaceDark = palette.dark;
 					entry.canvas.replaceChildren(svgFragment(result.svg));
 					entry.state = 'ok';
 					paint(entry);
@@ -826,6 +830,40 @@ window.__ModuleLoader__.load({
 		//#region viewer
 		/** The one open fullscreen viewer, or null. */
 		let lightbox = null;
+
+		/**
+		 * Force a colour to be opaque.
+		 *
+		 * A translucent surface would let the dark backdrop through and defeat the
+		 * point, so an `rgba()` value below full alpha falls back to the theme's solid
+		 * base. Hex and named colours are opaque by definition.
+		 * @param color - any CSS colour string from the design tokens.
+		 * @param dark - whether the dark fallback applies.
+		 * @returns an opaque colour string.
+		 */
+		function opaqueSurface(color, dark) {
+			const match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?\s*\)$/i.exec(color);
+			if (match === null) return color;
+			const raw = match[4];
+			const alpha = raw === undefined ? 1 : raw.endsWith('%') ? Number.parseFloat(raw) / 100 : Number.parseFloat(raw);
+			if (alpha >= 1) return color;
+			return dark ? '#1b1c1f' : '#ffffff';
+		}
+
+		/** The surface a diagram should sit on, from its own record or the live tokens. */
+		function knownSurface(entry) {
+			const dark = typeof entry?.surfaceDark === 'boolean' ? entry.surfaceDark : currentScheme() === 'dark';
+			if (typeof entry?.surface === 'string' && entry.surface !== '') {
+				return { color: opaqueSurface(entry.surface, dark), dark };
+			}
+			let color = '';
+			try {
+				color = window.getComputedStyle(document.documentElement).getPropertyValue('--dsw-alias-bg-base').trim();
+			} catch {
+				color = '';
+			}
+			return { color: opaqueSurface(color === '' ? '#ffffff' : color, dark), dark };
+		}
 
 		/** A diagram's natural size, read from its viewBox with sane fallbacks. */
 		function naturalSize(svg) {
@@ -914,6 +952,12 @@ window.__ModuleLoader__.load({
 			canvas.className = 'dsh-mdm-lb-canvas';
 			canvas.style.width = `${size.width}px`;
 			canvas.style.height = `${size.height}px`;
+			// Paint the palette this diagram was rendered for. Without it the
+			// transparent SVG sits on the dark backdrop and dark labels vanish.
+			const surface = knownSurface(entry);
+			canvas.style.background = surface.color;
+			canvas.style.border = `1px solid ${surface.dark ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.08)'}`;
+			canvas.setAttribute('data-dsh-mermaid-surface', surface.dark ? 'dark' : 'light');
 			const clone = source.cloneNode(true);
 			clone.style.width = '100%';
 			clone.style.height = '100%';
@@ -941,7 +985,9 @@ window.__ModuleLoader__.load({
 			const fit = () => {
 				const availableWidth = Math.max(80, stage.clientWidth - 48);
 				const availableHeight = Math.max(80, stage.clientHeight - 48);
-				view.fit = Math.min(availableWidth / size.width, availableHeight / size.height);
+				// The sheet's padding scales with the diagram, so fit against the
+				// padded box rather than the bare viewBox.
+				view.fit = Math.min(availableWidth / (size.width + 48), availableHeight / (size.height + 48));
 				// Never blow a small diagram up past 1.5x: filling the window with two
 				// giant boxes looks broken, and dense diagrams are already large.
 				view.scale = Math.max(view.min, Math.min(view.fit, 1.5));

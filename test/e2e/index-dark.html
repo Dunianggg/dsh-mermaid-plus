@@ -29,7 +29,7 @@
     --dsw-alias-state-error-primary: #f7768e;
   }
   body { background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); }
-pre.shipped-code-card { background: var(--dsw-alias-bg-layer-2) !important; color: var(--dsw-alias-label-primary); }
+  pre.shipped-code-card { background: var(--dsw-alias-bg-layer-2) !important; color: var(--dsw-alias-label-primary); }
   #transcript { max-width: 720px; margin: 0 auto; }
   pre { background: #f4f6fb; border-radius: 8px; padding: 10px; overflow: auto; }
   .shipped-code-card { font: 12px ui-monospace, monospace; }
@@ -61,6 +61,7 @@ const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   const url = typeof input === 'string' ? input : input.url;
   if (/^[:\/]*\/?x-dsh-mermaid-plus\/__report$/.test(url.replace(/^https?:\/\/[^/]+/, ''))) {
+    (window.__dshMermaidReports ??= []).push(url);
     return Promise.resolve({
       ok: true,
       status: 204,
@@ -147,6 +148,14 @@ clientModule.apply(ctx);
 record('three views registered', registrations.length === 3, registrations.map((entry) => entry.name).join(', '));
 
 const host = registrations.find((entry) => entry.name === 'shell.overlay');
+if (new URLSearchParams(location.search).has('bare')) {
+  const mount = document.createElement('div');
+  document.body.append(mount);
+  createRoot(mount).render(React.createElement(host.component));
+  window.__E2E__ = [{ name: 'bare mount', ok: true }];
+  document.title = 'E2E bare';
+  throw new Error('bare mode: rendering stopped after mount');
+}
 const mount = document.createElement('div');
 document.body.append(mount);
 const root = createRoot(mount);
@@ -207,8 +216,10 @@ const button = firstCard.querySelector('.dsh-mdm-btn');
 const hiddenBefore = firstPre.hidden;
 button.click();
 await new Promise((resolve) => setTimeout(resolve, 60));
+const codeViewDisplay = getComputedStyle(firstCard.querySelector('.dsh-mdm-diagram')).display;
 record('toggle shows source', firstPre.hidden === false && firstCard.querySelector('.dsh-mdm-diagram').hidden === true,
-  `hidden before=${hiddenBefore}, after=${firstPre.hidden}`);
+  `hidden before=${hiddenBefore}, after=${firstPre.hidden}, diagram display=${codeViewDisplay}`);
+record('code view really hides the diagram', codeViewDisplay === 'none', `display=${codeViewDisplay}`);
 button.click();
 await new Promise((resolve) => setTimeout(resolve, 60));
 record('toggle restores diagram', firstPre.hidden === true);
@@ -227,7 +238,50 @@ const streamSvg = stream.closest('.dsh-mdm')?.querySelector('.dsh-mdm-svg svg');
 const streamNodes = streamSvg?.querySelectorAll('*').length ?? 0;
 record('streamed block renders once settled', settled, `${streamNodes} svg node(s) for the final source`);
 
-// 9. On-demand mode: nothing renders until the reader asks.
+// 8b. The browser half must actually attempt its lifecycle report.
+record('browser half reports lifecycle events', (window.__dshMermaidReports ?? []).length > 0,
+  `${(window.__dshMermaidReports ?? []).length} report(s), first=${window.__dshMermaidReports?.[0] ?? '-'}`);
+
+// 9. The viewer: a rendered diagram opens enlarged, zooms, and closes.
+const expandButton = [...firstCard.querySelectorAll('.dsh-mdm-btn')].find((node) => node.textContent === 'Expand');
+record('expand control present', expandButton !== undefined && !expandButton.hidden);
+expandButton.click();
+const viewer = await waitFor(() => document.querySelector('.dsh-mdm-lb') !== null, 3000);
+record('viewer opens', viewer);
+const viewerSvg = document.querySelector('.dsh-mdm-lb-canvas svg');
+const viewerBox = viewerSvg?.getBoundingClientRect();
+record('viewer shows the diagram', viewerSvg !== null && (viewerBox?.width ?? 0) > 200,
+  `svg width=${Math.round(viewerBox?.width ?? 0)}`);
+const surfaceStyle = getComputedStyle(document.querySelector('.dsh-mdm-lb-canvas'));
+const surfaceAlpha = (() => {
+  const m = /rgba?\(([^)]+)\)/.exec(surfaceStyle.backgroundColor) || [];
+  const parts = (m[1] ?? '').split(',').map((value) => Number.parseFloat(value));
+  return parts.length === 4 ? parts[3] : parts.length === 3 ? 1 : 0;
+})();
+const surfaceLuma = (() => {
+  const m = /rgba?\(([^)]+)\)/.exec(surfaceStyle.backgroundColor) || [];
+  const [r = 0, g = 0, b = 0] = (m[1] ?? '').split(',').map((value) => Number.parseFloat(value));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+})();
+record('viewer paints an opaque diagram surface', surfaceAlpha === 1 && surfaceLuma > 180,
+  `${surfaceStyle.backgroundColor} alpha=${surfaceAlpha} luma=${Math.round(surfaceLuma)}`);
+
+const backdrop = getComputedStyle(document.querySelector('.dsh-mdm-lb')).backgroundColor;
+record('viewer dims the page behind it', /rgba?\([^)]*,\s*0?\.[6-9]\d*\)/.test(backdrop), backdrop);
+const zoomLabel = document.querySelector('.dsh-mdm-lb-zoom');
+const zoomBefore = zoomLabel?.textContent;
+record('viewer starts at a fitted size', zoomBefore !== undefined && zoomBefore !== '100%', `initial ${zoomBefore}`);
+[...document.querySelectorAll('.dsh-mdm-lb-btn')]
+  .find((node) => node.getAttribute('aria-label') === 'Zoom in')
+  ?.click();
+await new Promise((resolve) => setTimeout(resolve, 80));
+record('viewer zooms in', zoomLabel?.textContent !== zoomBefore, `${zoomBefore} -> ${zoomLabel?.textContent}`);
+document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+await new Promise((resolve) => setTimeout(resolve, 80));
+record('Escape closes the viewer', document.querySelector('.dsh-mdm-lb') === null);
+record('viewer restores page scrolling', document.body.style.overflow === '');
+
+// 10. On-demand mode: nothing renders until the reader asks.
 const settingsMount = document.createElement('div');
 document.body.append(settingsMount);
 const settingsRoot = createRoot(settingsMount);
@@ -262,7 +316,7 @@ record('on-demand click hides the source', lazy.hidden === true);
 settingsRoot.unmount();
 settingsMount.remove();
 
-// 10. Unmount must clean everything up (the plugin's own disposal contract).
+// 11. Unmount must clean everything up (the plugin's own disposal contract).
 // `?keep` leaves the page rendered so a screenshot can show the real diagrams.
 if (!new URLSearchParams(location.search).has('keep')) {
 root.unmount();
@@ -276,6 +330,11 @@ record('unmount leaves every source block', restored === 4, `${restored} mermaid
 
 }
 
+// `?viewer=1` leaves the viewer open for a screenshot.
+if (new URLSearchParams(location.search).has('viewer')) {
+  const first = document.querySelector('.dsh-mdm');
+  [...first.querySelectorAll('.dsh-mdm-btn')].find((node) => node.textContent === 'Expand')?.click();
+}
 document.title = `E2E ${results.filter((r) => r.ok).length}/${results.length}`;
 window.__E2E__ = results;
 </script>

@@ -305,6 +305,14 @@ assert.equal(dialog.getAttribute('role'), 'dialog');
 assert.equal(dialog.getAttribute('aria-modal'), 'true');
 assert.ok(dialog.querySelector('svg') !== null, 'the viewer must show the diagram');
 assert.equal(window.document.body.style.overflow, 'hidden', 'the viewer must lock page scrolling');
+const surface = dialog.querySelector('.dsh-mdm-lb-canvas');
+assert.ok(surface !== null, 'the viewer must have a surface');
+assert.match(
+	surface.style.background,
+	/rgb\(255,\s*255,\s*255\)|#ffffff/i,
+	'the surface must paint the palette background, not stay transparent',
+);
+assert.equal(surface.getAttribute('data-dsh-mermaid-surface'), 'light');
 
 const level = dialog.querySelector('.dsh-mdm-lb-zoom');
 const before = level.textContent;
