@@ -82,14 +82,18 @@ It records lifecycle events only — `start`, `apply-ok`, `apply-throw`, `adopte
 
 ## Development
 
-The repository root holds the build and test tooling; the installable package is `bundle/`.
+The plugin has no build step for its own code: `index.js` and `client.js` run as they are. Only `vendor/mermaid.esm.min.mjs` is generated, and only when the bundled Mermaid version changes.
 
 ```sh
 npm install                 # mermaid 11.17.0, esbuild, jsdom
-node build.mjs              # rebuilds bundle/vendor/mermaid.esm.min.mjs
+node build.mjs              # rebuild vendor/mermaid.esm.min.mjs
 node test/run.mjs           # host route, real cordis mount, jsdom browser-half behaviour
-node test/serve-e2e.mjs     # then open http://127.0.0.1:8732/ for the real-browser suite
+node test/serve-e2e.mjs     # then open http://127.0.0.1:8732/ for 35 real-browser cases
+node tools/doctor.mjs       # activation, install mode, last browser events
+node tools/dev-sync.mjs     # copy this checkout over an npm-installed copy
 ```
+
+[`docs/development.md`](docs/development.md) covers the debug loop, what each symptom means, and the release flow.
 
 ## License
 
