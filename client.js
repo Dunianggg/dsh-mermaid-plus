@@ -1191,17 +1191,26 @@ window.__ModuleLoader__.load({
 				for (const code of fresh) adopt(code);
 				// The scan itself stays quiet; only adopted blocks and failures report.
 				if (fresh.length > 0) report('adopted', { count: fresh.length });
-				else if (entries.size === 0 && unmatchedReports < 3) {
-					// A block exists but nothing matched: record what the DOM actually
-					// holds, once or twice, so a renderer this detector misses can be
-					// diagnosed from a user's own session instead of a screenshot.
-					const blocks = document.querySelectorAll('pre');
-					if (blocks.length > 0) {
+				// A block that belongs to no card and was not recognised: record what the
+				// DOM actually holds, a few times, so a renderer this detector misses can
+				// be diagnosed from a real session instead of a screenshot.
+				if (unmatchedReports < 3) {
+					const previewOpen = document.querySelector('[data-document-markdown]') !== null;
+					// Inside a document preview every stray block is interesting; elsewhere
+					// only a block that opens like a diagram is, which keeps ordinary code
+					// blocks from filling the log.
+					const stray = [...document.querySelectorAll('pre')].filter(
+						(pre) =>
+							!entries.has(pre) &&
+							pre.closest('[data-dsh-mermaid]') === null &&
+							(previewOpen || DIAGRAM_KEYWORD.test(pre.textContent ?? '')),
+					);
+					if (stray.length > 0) {
 						unmatchedReports += 1;
 						report('blocks-unmatched', {
-							count: blocks.length,
-							inPreview: document.querySelector('[data-document-markdown]') !== null,
-							sample: [...blocks].slice(0, 3).map((pre) => ({
+							count: stray.length,
+							inPreview: previewOpen,
+							sample: stray.slice(0, 3).map((pre) => ({
 								cls: pre.className || '(none)',
 								code: pre.querySelector('code') !== null,
 								head: (pre.textContent ?? '').slice(0, 40),
