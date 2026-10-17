@@ -1,5 +1,10 @@
 # dsh-mermaid-plus
 
+[![npm version](https://img.shields.io/npm/v/dsh-mermaid-plus.svg)](https://www.npmjs.com/package/dsh-mermaid-plus)
+[![license](https://img.shields.io/npm/l/dsh-mermaid-plus.svg)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.2-4b5563)](https://github.com/deepseek-ai/DeepSeek-Harness)
+[![install](https://img.shields.io/badge/dsh%20plugin%20add-dsh--mermaid--plus-5b8def)](#install)
+
 Mermaid diagrams for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) — rendered **on demand** by default, so a transcript full of diagrams costs nothing until you ask for one.
 
 [中文说明](#中文说明)
