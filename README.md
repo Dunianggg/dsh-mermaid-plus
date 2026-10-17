@@ -78,7 +78,7 @@ The browser half reports lifecycle events to its Host half, which appends them t
 <os tmp>/dsh-mermaid-plus/report.json
 ```
 
-It records `start`, `adopted`, `render-ok`, `render-error`, `apply-ok` and `apply-throw`. If diagrams stop appearing, that file plus the browser console (`[dsh-mermaid-plus]` or a failed import) usually identifies the cause.
+It records lifecycle events only — `start`, `apply-ok`, `apply-throw`, `adopted`, `render-ok`, `render-error`, `blocks-unmatched` — with counts, not document text: no diagram source, no file contents, no paths beyond the plugin's own. If diagrams stop appearing, that file plus the browser console (a failed import) usually identifies the cause.
 
 ## Development
 
