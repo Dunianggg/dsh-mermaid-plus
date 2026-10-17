@@ -55,17 +55,62 @@ Both files live in `<os tmp>/dsh-mermaid-plus/`. They contain **event names and 
 
 The decoration layer is the fragile part: it keys on rendered `<pre>` elements because the shipped Markdown renderer exposes no code-fence extension point. If upstream ever adds one, that is the code to replace — the rest (Host route, modes, viewer, settings) survives.
 
-## Releasing
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
 
 ```sh
-node test/run.mjs && node test/serve-e2e.mjs          # 33 + 35 cases
-# bump "version" in package.json
-git commit -am "Release x.y.z" && git push
-npm publish --access public                            # needs a 2FA-capable token
-gh release create "vx.y.z" --title "vx.y.z" --notes "…"
+npm ci
+node test/run.mjs
+node test/run-e2e-headless.mjs   # spawns the page server, drives Chrome, reads <title>E2E n/m
+node tools/pack-check.mjs        # asserts the publish whitelist and the vendored runtime
 ```
 
-npm takes a few minutes to expose a new tarball. The README on the npm page comes from the published tarball, so documentation-only changes still need a version to appear there.
+`test/run-e2e-headless.mjs` needs a Chrome/Chromium binary; it finds the usual
+names, and `CHROME_BIN` overrides the search. The page reports its own verdict in
+the title, so a browser that renders nothing fails instead of passing vacuously.
+
+One suite is skipped on CI on purpose: `test/host-mount.test.mjs` mounts the
+plugin on the real `webServer` service, and the published
+`@deepseek-ai/dsh-host-webserver` is still the 0.0.x generation (it registers
+`httpServer`). Locally, symlink the application's packages into `node_modules`
+to run it:
+
+```sh
+mkdir -p node_modules/@deepseek-ai
+ln -s "/Applications/DSH NEXT.app/Contents/Resources/app/node_modules/@deepseek-ai/cordis" node_modules/@deepseek-ai/cordis
+ln -s "/Applications/DSH NEXT.app/Contents/Resources/app/node_modules/@deepseek-ai/dsh-host-webserver" node_modules/@deepseek-ai/dsh-host-webserver
+```
+
+## Releasing
+
+By hand:
+
+```sh
+node test/run.mjs && node test/run-e2e-headless.mjs   # 33 + 35 cases
+npm pkg set version=x.y.z
+git commit -am "Release x.y.z" && git push
+npm publish --access public                            # needs a 2FA-capable token
+gh release create "vx.y.z" --title "vx.y.z" --generate-notes
+```
+
+By tag (`.github/workflows/release.yml`):
+
+```sh
+npm pkg set version=x.y.z
+git commit -am "Release x.y.z" && git push
+git tag "vx.y.z" && git push origin "vx.y.z"          # runs the suites, publishes, opens the release
+```
+
+The release workflow refuses a tag that does not match `package.json`. It needs
+one repository secret, **`NPM_TOKEN`**: a granular npm access token with
+“Read and write” for this package and **“Bypass 2FA”** enabled — npm rejects
+publishing without 2FA or such a token (`E403`). `workflow_dispatch` on the
+release workflow defaults to a dry run that skips publishing.
+
+npm takes a few minutes to expose a new tarball. The README on the npm page comes
+from the published tarball, so documentation-only changes still need a version to
+appear there.
 
 `files` in `package.json` is the publish whitelist: tooling (`tools/`, `test/`, `build.mjs`) and `docs/` are repository-only.
 

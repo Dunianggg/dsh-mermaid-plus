@@ -1,0 +1,55 @@
+name: CI
+
+# The plugin decorates rendered Markdown and mounts a Host route, so both halves
+# have a cheap regression suite: node-side cases, then the shipped bundle in a
+# real browser. Both run on every push, which is the point — a DSH upgrade or a
+# careless selector change should fail here rather than in someone's transcript.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Node-side suites (host route, cordis mount, browser-half behaviour)
+        run: node test/run.mjs
+
+      - name: Real-browser suite
+        run: node test/run-e2e-headless.mjs
+
+      - name: Publishable tarball shape
+        run: node tools/pack-check.mjs
+
+      # A tag that does not match the manifest would publish the wrong version.
+      - name: Version and tag agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $tag does not match package.json $version" >&2
+            exit 1
+          fi
+          echo "tag and manifest agree on $version"
