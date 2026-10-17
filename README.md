@@ -6,6 +6,18 @@ Mermaid diagrams for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-
 
 ---
 
+## Screenshots
+
+On demand, in a light theme — the source stays until you press **Diagram**:
+
+![A mermaid card showing its source and a Diagram button](https://raw.githubusercontent.com/pidongqianqian/dsh-mermaid-plus/main/docs/card.png)
+
+Fullscreen viewer, light and dark. The sheet takes the palette the diagram was rendered for, so labels stay readable in both themes:
+
+![Fullscreen mermaid viewer on a light sheet](https://raw.githubusercontent.com/pidongqianqian/dsh-mermaid-plus/main/docs/viewer-light.png)
+
+![Fullscreen mermaid viewer on a dark sheet](https://raw.githubusercontent.com/pidongqianqian/dsh-mermaid-plus/main/docs/viewer-dark.png)
+
 ## What it does
 
 A fenced ` ```mermaid ` block in the conversation (or in a Markdown file preview) becomes a card:
